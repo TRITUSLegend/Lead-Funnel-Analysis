@@ -5,7 +5,7 @@
 **Stack:** PostgreSQL · SQL (CTEs, window functions) · Python · Streamlit · Plotly  
 **North-star metric:** lead-to-customer conversion rate (38.5% overall)
 
-[Sources tab of the dashboard](https://claude.ai/chat/docs/dashboard-sources.png)
+[Live Application](https://lead-funnel-analysis-ark.streamlit.app)
 
 ---
 
