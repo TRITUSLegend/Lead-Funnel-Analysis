@@ -1,0 +1,12 @@
+-- 04_export.sql : writes the result tables the dashboard reads (run from project root).
+\copy (SELECT COUNT(*) AS leads, SUM(converted) AS converted, ROUND(100.0*AVG(converted),1) AS conv_rate_pct FROM leads) TO 'outputs/kpis.csv' CSV HEADER
+
+\copy (WITH t AS (SELECT SUM(converted) AS c, COUNT(*) AS n FROM leads) SELECT l.lead_source, COUNT(*) AS leads, ROUND(100.0*COUNT(*)/t.n,1) AS pct_of_leads, ROUND(100.0*AVG(l.converted),1) AS conv_rate_pct, ROUND(100.0*SUM(l.converted)/t.c,1) AS pct_of_conversions FROM leads l, t GROUP BY l.lead_source, t.c, t.n ORDER BY leads DESC) TO 'outputs/by_source.csv' CSV HEADER
+
+\copy (SELECT engagement_band, COUNT(*) AS leads, ROUND(100.0*AVG(converted),1) AS conv_rate_pct FROM leads WHERE lead_origin <> 'Lead Add Form' GROUP BY engagement_band ORDER BY engagement_band) TO 'outputs/by_engagement.csv' CSV HEADER
+
+\copy (SELECT COALESCE(last_activity,'Unknown') AS last_activity, COUNT(*) AS leads, ROUND(100.0*AVG(converted),1) AS conv_rate_pct FROM leads GROUP BY 1 HAVING COUNT(*) >= 100 ORDER BY conv_rate_pct DESC) TO 'outputs/by_last_activity.csv' CSV HEADER
+
+\copy (WITH c AS (SELECT converted, (occupation IS NOT NULL)::int + (specialization IS NOT NULL)::int + (city IS NOT NULL)::int + (how_heard IS NOT NULL)::int AS fields_filled FROM leads WHERE lead_origin <> 'Lead Add Form') SELECT fields_filled, COUNT(*) AS leads, ROUND(100.0*AVG(converted),1) AS conv_rate_pct FROM c GROUP BY fields_filled ORDER BY fields_filled) TO 'outputs/by_completeness.csv' CSV HEADER
+
+\copy (WITH scored AS (SELECT lead_number, converted, CASE WHEN lead_source IN ('Google','Organic Search') THEN 1 WHEN lead_source IN ('Olark Chat','Referral Sites') THEN -1 ELSE 0 END + CASE engagement_band WHEN '3. 15+ min' THEN 3 WHEN '2. 5-15 min' THEN 1 WHEN '1. Under 5 min' THEN -2 ELSE 0 END + CASE WHEN occupation = 'Working Professional' THEN 3 WHEN occupation IS NULL THEN -2 ELSE 0 END + CASE WHEN do_not_email THEN -1 ELSE 0 END AS score FROM leads WHERE lead_origin <> 'Lead Add Form'), ranked AS (SELECT *, NTILE(5) OVER (ORDER BY score DESC, lead_number) AS quintile FROM scored), tot AS (SELECT SUM(converted) AS c FROM ranked) SELECT quintile AS priority_quintile, COUNT(*) AS leads, ROUND(100.0*AVG(converted),1) AS conv_rate_pct, SUM(converted) AS conversions, ROUND(100.0*SUM(SUM(converted)) OVER (ORDER BY quintile) / (SELECT c FROM tot),1) AS cum_pct_of_conversions FROM ranked GROUP BY quintile ORDER BY quintile) TO 'outputs/priority_quintiles.csv' CSV HEADER
